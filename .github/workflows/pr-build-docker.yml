@@ -1,7 +1,7 @@
 name: Docker PR Build
 
 on:
-  pull_request:
+  pull_request_target: # Run on base repo with secrets. Do check the usages of secrets to avoid potential hacking.
     types: [synchronize, labeled, unlabeled] # PR 更新或标签变化时触发
 
 # 确保同一 PR 同一时间只运行一个相同的 workflow,取消正在进行的旧的运行
@@ -151,8 +151,20 @@ jobs:
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
 
+      - name: Check JS scripts to be run # Safeguard
+        id: check_script
+        run: |
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }})
+          echo "Changed files: $CHANGED_FILES"
+          if echo "$CHANGED_FILES" | grep -q "^\.github/scripts/docker-pr-comment\.js$"; then
+            echo "script_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "script_changed=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Comment on PR with Docker build info
         uses: actions/github-script@v8
+        if: steps.check_script.outputs.script_changed == 'false'
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
